@@ -1,0 +1,56 @@
+name: Build Unsigned IPA for 3uTools and Sideloadly
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    
+    steps:
+      - name: Проверка кода из репозитория
+        uses: actions/checkout@v4
+        with:
+          lfs: true # ОБЯЗАТЕЛЬНО: выкачиваем тяжелые файлы .a из LFS
+
+      - name: Сборка Unity Xcode проекта
+        run: |
+          xcodebuild archive \
+            -project Unity-iPhone.xcodeproj \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -archivePath build/ios/YourApp.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
+
+      - name: Упаковка в IPA
+        run: |
+          mkdir -p build/ios/ipa/Payload
+          
+          # Автоматически находим скомпилированное приложение внутри архива
+          APP_PATH=$(find build/ios/YourApp.xcarchive -name "*.app" -type d | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "КРИТИЧЕСКАЯ ОШИБКА: Файл приложения (.app) не найден в созданном архиве!"
+            exit 1
+          fi
+          
+          echo "Успешно найдено приложение по пути: $APP_PATH"
+          
+          # Копируем найденное приложение в папку Payload
+          cp -R "$APP_PATH" build/ios/ipa/Payload/
+          
+          # Запаковываем в IPA архив
+          cd build/ios/ipa
+          zip -r unsigned_app.ipa Payload
+
+      - name: Сохранение готового IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unity-Unsigned-IPA
+          path: build/ios/ipa/unsigned_app.ipa
+          retention-days: 7
